@@ -155,13 +155,13 @@ def _encode(enc: str, c: Canvas, tracks: list[Track], p: Params) -> dict[str, li
             q = np.round(v * p.levels).astype(int)
             for level in range(1, p.levels + 1):
                 g = round(255 * (1 - level / p.levels))
-                for s, e in _runs(q == level):
+                for s, e in _runs(q == level, t):
                     out[f"fill:#{g:02x}{g:02x}{g:02x}"].append(c.band(t, t.theta(s), t.theta(e), -half, half))
         elif enc == "threshold":
-            for s, e in _runs(v > p.threshold):
+            for s, e in _runs(v > p.threshold, t):
                 out[FILL].append(c.band(t, t.theta(s), t.theta(e), -half, half))
         elif enc == "width":
-            for s, e in _runs(v > 0.02):
+            for s, e in _runs(v > 0.02, t):
                 thetas = np.concatenate([[t.theta(s)], t.theta(np.arange(s, e) + 0.5), [t.theta(e)]])
                 vals = np.concatenate([[v[s]], v[s:e], [v[e - 1]]])
                 out[FILL].append(c.ribbon(t, thetas, half * vals))
@@ -177,14 +177,16 @@ def _encode(enc: str, c: Canvas, tracks: list[Track], p: Params) -> dict[str, li
             offs = -half + (np.arange(p.lines) + 0.5) * 2 * half / p.lines
             count = np.round(v * p.lines)
             for rank, li in enumerate(np.argsort(np.abs(offs), kind="stable")):
-                for s, e in _runs(count > rank):
+                for s, e in _runs(count > rank, t):
                     out[STROKE].append(c.line(t, t.theta(s), t.theta(e), offs[li]))
         elif enc == "wiggle":
             n = len(v)
             thetas = np.concatenate([[t.theta(0)], t.theta(np.arange(n) + 0.5), [t.theta(n)]])
             sign = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
             offs = np.concatenate([[0.0], half * v * sign, [0.0]])
-            out[STROKE].append(c.polyline(t, thetas, offs))
+            # Consecutive pieces share an end point, so the stroke stays continuous.
+            for s in range(0, len(thetas) - 1, MAX_RUN_CELLS):
+                out[STROKE].append(c.polyline(t, thetas[s:s + MAX_RUN_CELLS + 1], offs[s:s + MAX_RUN_CELLS + 1]))
     return out
 
 
